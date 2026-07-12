@@ -64,6 +64,7 @@ household-budget/
 | `/` | **Dashboard** | Tile 1: Current month expenses by category; Tile 2: Next 3–5 upcoming recurring transactions; Tile 3: Top 3–5 savings recommendations |
 | `/transactions` | **Transactions** | Paginated list of all transactions, newest first. Columns: Date, Account, Description, Category, Amount, Recurring flag |
 | `/upload` | **Upload Statement** | File picker (CSV only) + Import button; import status/progress feedback |
+| `/transactions` | **Edit Category** | Allow user to manually edit transaction category inline |
 
 ### Engineering Notes
 - **Security**: Validate file type client-side (`.csv` only) before sending to backend. Never display raw HTML from API responses.
@@ -86,9 +87,10 @@ household-budget/
 | `POST` | `/api/import` | Parse uploaded CSV, deduplicate, insert new rows | Calls categorize |
 | `GET` | `/api/dashboard` | Returns summary, upcoming recurrings, recommendations | Calls recommendations |
 | `POST` | `/api/recurring` | Trigger recurring transaction detection | Yes |
+| `PATCH` | `/api/transactions/{transaction_id}/category` | Manually set/correct transaction category | No |
 
 **Layer placement of intelligent features:**
-- **Categorization** → triggered automatically during import; LLM call made in backend `services/categorize.py`, result written to DB if confidence is high; flagged (`needs_review=1`) if medium; left uncategorized if low
+- **Categorization** → user-owned model. First import is manually categorized by user. Backend learns category rules from these manual edits. On subsequent imports, backend applies learned user rules first, then intelligence fallback; flagged (`needs_review=1`) if medium; left uncategorized if low
 - **Recurring detection** → backend service `services/recurring.py` calls LLM on demand; updates `recurring=1` in DB
 - **Recommendations** → backend service `services/recommendations.py` calls LLM on demand; results returned to dashboard (not persisted)
 

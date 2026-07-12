@@ -68,6 +68,7 @@ Component responsibilities:
 4. Made AI outputs schema-bound and policy-checked before persistence.
 5. Upgraded recurring detection and recommendations to hybrid logic (deterministic first, LLM second) for lower cost and higher consistency.
 6. Added explicit backup/restore and retention guidance for local reliability.
+7. Added user-owned category workflow: first import is manually categorized by user, later imports use learned rules with intelligence fallback.
 
 ---
 
@@ -117,6 +118,7 @@ Stack: React 18, Vite, TypeScript, React Router, TanStack Query, Tailwind CSS.
 | /transactions | Transactions | Paginated and filterable list, newest first |
 | /upload | Upload Statement | CSV upload, validation result, import job status |
 | /imports | Import History | Recent imports, rows inserted/skipped/errors, retry option |
+| /transactions | Transaction Category Editing | Inline category edits so users can correct model/rule output |
 
 ### Engineering Notes
 - Security: client validates type/size before upload, but server remains source of validation truth.
@@ -142,12 +144,23 @@ Stack: Python 3.11+, FastAPI, Pydantic v2, sqlite3, httpx, python-multipart.
 | GET | /api/v1/jobs/{job_id} | Generic job status for UI polling |
 | POST | /api/v1/recurring/recompute | Enqueue recurring detection job |
 | POST | /api/v1/recommendations/recompute | Enqueue recommendation refresh |
+| PATCH | /api/v1/transactions/{transaction_id}/category | Manually set or correct a transaction category |
 
 ### Processing Model
 
 - Synchronous request: validate input, persist metadata, enqueue job.
 - Asynchronous worker: parse, normalize, dedupe, categorize, mark recurring, update aggregates.
 - Status model: queued -> running -> succeeded or failed, with error message and retry count.
+
+### Category Ownership Model
+
+- Imported bank category values are ignored in MVP.
+- First-pass onboarding: user manually assigns categories to transactions after first import.
+- Manual edits create reusable user rules (merchant/normalized description -> category).
+- Subsequent imports:
+    1. apply user rules first,
+    2. then deterministic/LLM fallback for unknown items,
+    3. leave uncertain items as needs_review.
 
 ### Engineering Notes
 - Security: strict CSV schema validation, filename sanitization, path traversal protection, parameterized SQL only.
@@ -230,6 +243,7 @@ CREATE TABLE transactions (
     description    TEXT NOT NULL,
     normalized_desc TEXT,
     category       TEXT,
+    category_source TEXT,
     amount         REAL NOT NULL,
     currency       TEXT NOT NULL DEFAULT 'USD',
     recurring      INTEGER NOT NULL DEFAULT 0,
@@ -238,6 +252,12 @@ CREATE TABLE transactions (
     source_file    TEXT,
     created_at     TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at     TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE category_rules (
+    normalized_desc TEXT PRIMARY KEY,
+    category        TEXT NOT NULL,
+    updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE import_runs (
